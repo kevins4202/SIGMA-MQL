@@ -64,7 +64,8 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
             wandb.log({
                 'metrics/success_rate': buffer_metrics.get('success_rate', 0),
                 'metrics/arrival_rate': buffer_metrics.get('arrival_rate', 0),
-                'metrics/episode_length': buffer_metrics.get('episode_length', 0)
+                'metrics/episode_length': buffer_metrics.get('episode_length', 0),
+                'metrics/reward_per_episode': buffer_metrics.get('reward_per_episode', 0)
             })
 
     print("start training")
@@ -97,7 +98,8 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
             wandb.log({
                 'metrics/success_rate': buffer_metrics.get('success_rate', 0),
                 'metrics/arrival_rate': buffer_metrics.get('arrival_rate', 0),
-                'metrics/episode_length': buffer_metrics.get('episode_length', 0)
+                'metrics/episode_length': buffer_metrics.get('episode_length', 0),
+                'metrics/reward_per_episode': buffer_metrics.get('reward_per_episode', 0)
             })
         
         print()

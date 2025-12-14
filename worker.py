@@ -40,6 +40,7 @@ class GlobalBuffer:
         self.stat_dict = {init_env_settings:[]}
         self.arrival_dict = {init_env_settings:[]}
         self.episode_length_dict = {init_env_settings:[]}
+        self.reward_dict = {init_env_settings:[]}
         self.lock = threading.Lock()
         self.env_settings_set = ray.put([init_env_settings])
 
@@ -91,6 +92,7 @@ class GlobalBuffer:
                 self.stat_dict[stat_key] = []
                 self.arrival_dict[stat_key] = []
                 self.episode_length_dict[stat_key] = []
+                self.reward_dict[stat_key] = []
             
             self.stat_dict[stat_key].append(data[8])
             if len(self.stat_dict[stat_key]) == 201:
@@ -106,6 +108,12 @@ class GlobalBuffer:
             self.episode_length_dict[stat_key].append(data[9])
             if len(self.episode_length_dict[stat_key]) == 201:
                 self.episode_length_dict[stat_key].pop(0)
+            
+            # Track total reward per episode
+            total_reward = np.sum(data[5])
+            self.reward_dict[stat_key].append(total_reward)
+            if len(self.reward_dict[stat_key]) == 201:
+                self.reward_dict[stat_key].pop(0)
 
             idxes = np.arange(self.ptr*self.local_buffer_capacity, (self.ptr+1)*self.local_buffer_capacity)
             start_idx = self.ptr*self.local_buffer_capacity
@@ -271,6 +279,7 @@ class GlobalBuffer:
                         self.stat_dict[add_agent_key] = []
                         self.arrival_dict[add_agent_key] = []
                         self.episode_length_dict[add_agent_key] = []
+                        self.reward_dict[add_agent_key] = []
                     
                     if key[1] < configs.max_map_length:
                         add_map_key = (key[0], key[1]+5) 
@@ -278,6 +287,7 @@ class GlobalBuffer:
                             self.stat_dict[add_map_key] = []
                             self.arrival_dict[add_map_key] = []
                             self.episode_length_dict[add_map_key] = []
+                            self.reward_dict[add_map_key] = []
             
             self.env_settings_set = ray.put(list(self.stat_dict.keys()))
             
@@ -295,6 +305,10 @@ class GlobalBuffer:
             total_lengths = sum(sum(val) for val in self.episode_length_dict.values())
             episode_length = total_lengths / total_episodes if total_episodes > 0 else 0.0
             
+            # Reward per episode: average total reward per episode
+            total_rewards = sum(sum(val) for val in self.reward_dict.values())
+            reward_per_episode = total_rewards / total_episodes if total_episodes > 0 else 0.0
+            
             buffer_update_speed = self.counter / interval if interval > 0 else 0.0
             
             metrics = {
@@ -302,7 +316,8 @@ class GlobalBuffer:
                 'buffer_update_speed': buffer_update_speed,
                 'success_rate': success_rate,
                 'arrival_rate': arrival_rate,
-                'episode_length': episode_length
+                'episode_length': episode_length,
+                'reward_per_episode': reward_per_episode
             }
 
         self.counter = 0
@@ -349,6 +364,7 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
+        self.sheaf_section_loss = 0
         
         # For plotting loss
         self.loss_history = []
@@ -391,9 +407,12 @@ class Learner:
             b_next_seq_len = torch.LongTensor(b_next_seq_len)
 
             with torch.no_grad():
-                b_q_ = (1 - b_done) * self.tar_model(b_obs, b_next_seq_len, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
+                b_q_tar, _ = self.tar_model(b_obs, b_next_seq_len, b_hidden, b_comm_mask)
+                b_q_ = (1 - b_done) * b_q_tar.max(1, keepdim=True)[0]
 
-            b_q = self.model(b_obs[:, :-configs.forward_steps], b_seq_len, b_hidden, b_comm_mask[:, :-configs.forward_steps]).gather(1, b_action)
+            b_q, sheaf_loss = self.model(b_obs[:, :-configs.forward_steps], b_seq_len, b_hidden, b_comm_mask[:, :-configs.forward_steps])
+            b_q = b_q.gather(1, b_action)
+            self.sheaf_section_loss += sheaf_loss.item()
 
             td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
@@ -500,6 +519,7 @@ class Learner:
         updates = self.counter
         update_speed = (self.counter - self.last_counter) / interval if interval > 0 else 0.0
         loss = self.loss / (self.counter - self.last_counter) if self.counter != self.last_counter else 0.0
+        sheaf_section_loss = self.sheaf_section_loss / (self.counter - self.last_counter) if self.counter != self.last_counter else 0.0
         
         if self.counter != self.last_counter:
             print('loss: {:.4f}'.format(loss))
@@ -507,11 +527,13 @@ class Learner:
         metrics = {
             'updates': updates,
             'update_speed': update_speed,
-            'loss': loss
+            'loss': loss,
+            'sheaf_section_loss': sheaf_section_loss
         }
         
         self.last_counter = self.counter
         self.loss = 0
+        self.sheaf_section_loss = 0
         return self.done, metrics
 
 

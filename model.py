@@ -422,6 +422,7 @@ class Network(nn.Module):
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
-        return q_val
+        # Return both q_val and mean sheaf section loss for logging
+        return q_val, sheaf_section_loss.mean()
 
 
