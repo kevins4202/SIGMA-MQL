@@ -96,14 +96,20 @@ class LocalBuffer:
 
         self.size += 1
 
-    def finish(self, last_q_val=None, last_comm_mask=None):
+    def finish(self, last_q_val=None, last_comm_mask=None, num_arrived_agents=None):
         # last q value is None if done
         if last_q_val is None:
             done = True
+            # If num_arrived_agents not provided and done=True, assume all agents reached goals
+            if num_arrived_agents is None:
+                num_arrived_agents = self.num_agents
         else:
             done = False
             self.q_buf[self.size] = last_q_val
             self.comm_mask_buf[self.size] = last_comm_mask
+            # If num_arrived_agents not provided and done=False, default to 0
+            if num_arrived_agents is None:
+                num_arrived_agents = 0
         
         self.obs_buf = self.obs_buf[:self.size+1]
         self.act_buf = self.act_buf[:self.size]
@@ -120,4 +126,4 @@ class LocalBuffer:
         q_val = self.q_buf[np.arange(self.size), self.act_buf]
         td_errors[:self.size] = np.abs(reward-q_val).clip(1e-4)
 
-        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, td_errors, done, self.size, self.comm_mask_buf
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, td_errors, done, self.size, self.comm_mask_buf, num_arrived_agents

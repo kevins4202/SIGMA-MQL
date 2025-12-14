@@ -42,8 +42,30 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
 
     while not ray.get(buffer.ready.remote()):
         time.sleep(5)
-        ray.get(learner.stats.remote(5))
-        ray.get(buffer.stats.remote(5))
+        learner_result = ray.get(learner.stats.remote(5))
+        buffer_metrics = ray.get(buffer.stats.remote(5))
+        # Handle both old format (just done) and new format (done, metrics)
+        if isinstance(learner_result, tuple):
+            done, learner_metrics = learner_result
+        else:
+            done = learner_result
+            learner_metrics = {}
+        
+        # Log metrics to wandb
+        if learner_metrics:
+            wandb.log({f'train/{k}': v for k, v in learner_metrics.items()})
+        if buffer_metrics:
+            # Log buffer-specific metrics
+            wandb.log({
+                'buffer/buffer_size': buffer_metrics.get('buffer_size', 0),
+                'buffer/buffer_update_speed': buffer_metrics.get('buffer_update_speed', 0)
+            })
+            # Log episode metrics
+            wandb.log({
+                'metrics/success_rate': buffer_metrics.get('success_rate', 0),
+                'metrics/arrival_rate': buffer_metrics.get('arrival_rate', 0),
+                'metrics/episode_length': buffer_metrics.get('episode_length', 0)
+            })
 
     print("start training")
     buffer.run.remote()
@@ -52,8 +74,32 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
     done = False
     while not done:
         time.sleep(log_interval)
-        done = ray.get(learner.stats.remote(log_interval))
-        ray.get(buffer.stats.remote(log_interval))
+        learner_result = ray.get(learner.stats.remote(log_interval))
+        buffer_metrics = ray.get(buffer.stats.remote(log_interval))
+        
+        # Handle both old format (just done) and new format (done, metrics)
+        if isinstance(learner_result, tuple):
+            done, learner_metrics = learner_result
+        else:
+            done = learner_result
+            learner_metrics = {}
+        
+        # Log metrics to wandb
+        if learner_metrics:
+            wandb.log({f'train/{k}': v for k, v in learner_metrics.items()})
+        if buffer_metrics:
+            # Log buffer-specific metrics
+            wandb.log({
+                'buffer/buffer_size': buffer_metrics.get('buffer_size', 0),
+                'buffer/buffer_update_speed': buffer_metrics.get('buffer_update_speed', 0)
+            })
+            # Log episode metrics
+            wandb.log({
+                'metrics/success_rate': buffer_metrics.get('success_rate', 0),
+                'metrics/arrival_rate': buffer_metrics.get('arrival_rate', 0),
+                'metrics/episode_length': buffer_metrics.get('episode_length', 0)
+            })
+        
         print()
 
 
