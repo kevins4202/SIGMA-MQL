@@ -9,8 +9,11 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
 from model import Network
 from environment import Environment
 from buffer import SumTree, LocalBuffer
@@ -38,13 +41,13 @@ class GlobalBuffer:
         self.lock = threading.Lock()
         self.env_settings_set = ray.put([init_env_settings])
 
-        self.obs_buf = np.zeros(((local_buffer_capacity+1)*episode_capacity, configs.max_num_agents, *configs.obs_shape), dtype=np.bool)
+        self.obs_buf = np.zeros(((local_buffer_capacity+1)*episode_capacity, configs.max_num_agents, *configs.obs_shape), dtype=np.bool_)
         self.act_buf = np.zeros((local_buffer_capacity*episode_capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((local_buffer_capacity*episode_capacity), dtype=np.float16)
         self.hid_buf = np.zeros((local_buffer_capacity*episode_capacity, configs.max_num_agents, configs.hidden_dim), dtype=np.float16)
-        self.done_buf = np.zeros(episode_capacity, dtype=np.bool)
+        self.done_buf = np.zeros(episode_capacity, dtype=np.bool_)
         self.size_buf = np.zeros(episode_capacity, dtype=np.uint)
-        self.comm_mask_buf = np.zeros(((local_buffer_capacity+1)*episode_capacity, configs.max_num_agents, configs.max_num_agents), dtype=np.bool)
+        self.comm_mask_buf = np.zeros(((local_buffer_capacity+1)*episode_capacity, configs.max_num_agents, configs.max_num_agents), dtype=np.bool_)
 
 
     def __len__(self):
@@ -56,12 +59,12 @@ class GlobalBuffer:
 
     def prepare_data(self):
         while True:
-            if len(self.batched_data) <= 4:
+            if len(self.batched_data) <= 64:  # Increased buffer size to reduce blocking
                 data = self.sample_batch(configs.batch_size)
                 data_id = ray.put(data)
                 self.batched_data.append(data_id)
             else:
-                time.sleep(0.1)
+                time.sleep(0.05)  # Reduced sleep time for faster response
         
     def get_data(self):
 
@@ -77,14 +80,16 @@ class GlobalBuffer:
         '''
         data: actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9, comm_mask 10
         '''
-        if data[0] >= 12:
-            stat_key = (data[1], data[2])
-
-            if stat_key in self.stat_dict:
-
-                self.stat_dict[stat_key].append(data[8])
-                if len(self.stat_dict[stat_key]) == 201:
-                    self.stat_dict[stat_key].pop(0)
+        # Track statistics from all actors (removed the >= 12 restriction)
+        stat_key = (data[1], data[2])
+        
+        # Create entry if it doesn't exist
+        if stat_key not in self.stat_dict:
+            self.stat_dict[stat_key] = []
+        
+        self.stat_dict[stat_key].append(data[8])
+        if len(self.stat_dict[stat_key]) == 201:
+            self.stat_dict[stat_key].pop(0)
 
         with self.lock:
 
@@ -116,13 +121,34 @@ class GlobalBuffer:
 
         with self.lock:
 
-            idxes, priorities = self.priority_tree.batch_sample(batch_size)
+            # Sample indices and filter out invalid ones (those pointing to overwritten episodes)
+            valid_idxes = []
+            valid_priorities = []
+            max_attempts = batch_size * 10  # Safety limit to avoid infinite loops
+            attempts = 0
+            
+            while len(valid_idxes) < batch_size and attempts < max_attempts:
+                sampled_idxes, sampled_priorities = self.priority_tree.batch_sample(batch_size)
+                global_idxes = sampled_idxes // self.local_buffer_capacity
+                local_idxes = sampled_idxes % self.local_buffer_capacity
+                
+                # Filter valid indices (where local_idx < size_buf[global_idx])
+                valid_mask = local_idxes < self.size_buf[global_idxes]
+                valid_idxes.extend(sampled_idxes[valid_mask].tolist())
+                valid_priorities.extend(sampled_priorities[valid_mask].tolist())
+                attempts += 1
+            
+            # If we still don't have enough, use what we have (shouldn't happen in normal operation)
+            if len(valid_idxes) < batch_size:
+                print(f'Warning: Only found {len(valid_idxes)} valid samples out of {batch_size} requested')
+            
+            # Take only the requested batch_size
+            idxes = np.array(valid_idxes[:batch_size])
+            priorities = np.array(valid_priorities[:batch_size])
             global_idxes = idxes // self.local_buffer_capacity
             local_idxes = idxes % self.local_buffer_capacity
 
             for idx, global_idx, local_idx in zip(idxes.tolist(), global_idxes.tolist(), local_idxes.tolist()):
-                
-                assert local_idx < self.size_buf[global_idx], 'index is {} but size is {}'.format(local_idx, self.size_buf[global_idx])
 
                 steps = min(configs.forward_steps, (self.size_buf[global_idx].item()-local_idx))
                 seq_len = min(local_idx+1, configs.seq_len)
@@ -208,13 +234,13 @@ class GlobalBuffer:
         print('buffer size: {}'.format(self.size))
 
         print('  ', end='')
-        for i in range(configs.init_env_settings[1], configs.max_map_lenght+1, 5):
+        for i in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
             print('   {:2d}   '.format(i), end='')
         print()
 
         for num_agents in range(configs.init_env_settings[0], configs.max_num_agents+1):
             print('{:2d}'.format(num_agents), end='')
-            for map_len in range(configs.init_env_settings[1], configs.max_map_lenght+1, 5):
+            for map_len in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
                 if (num_agents, map_len) in self.stat_dict:
                     print('{:4d}/{:<3d}'.format(sum(self.stat_dict[(num_agents, map_len)]), len(self.stat_dict[(num_agents, map_len)])), end='')
                 else:
@@ -229,7 +255,7 @@ class GlobalBuffer:
                 if add_agent_key[0] <= configs.max_num_agents and add_agent_key not in self.stat_dict:
                     self.stat_dict[add_agent_key] = []
                 
-                if key[1] < configs.max_map_lenght:
+                if key[1] < configs.max_map_length:
                     add_map_key = (key[0], key[1]+5) 
                     if add_map_key not in self.stat_dict:
                         self.stat_dict[add_map_key] = []
@@ -250,10 +276,10 @@ class GlobalBuffer:
     def check_done(self):
 
         for i in range(configs.max_num_agents):
-            if (i+1, configs.max_map_lenght) not in self.stat_dict:
+            if (i+1, configs.max_map_length) not in self.stat_dict:
                 return False
         
-            l = self.stat_dict[(i+1, configs.max_map_lenght)]
+            l = self.stat_dict[(i+1, configs.max_map_length)]
             
             if len(l) < 200:
                 return False
@@ -265,7 +291,7 @@ class GlobalBuffer:
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer: GlobalBuffer):
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda')
         self.model = Network()
         if configs.load_model:
             state_dict = torch.load(configs.load_path, map_location=self.device)
@@ -279,6 +305,13 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
+        
+        # For plotting loss
+        self.loss_history = []
+        self.update_counts = []
+
+        # Ensure save directory exists
+        os.makedirs(configs.save_path, exist_ok=True)
 
         self.store_weights()
 
@@ -344,6 +377,14 @@ class Learner:
                 self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
                 self.counter += 1
+                
+                # Record individual loss value at every update (no averaging)
+                self.loss_history.append(loss.item())
+                self.update_counts.append(self.counter)
+                
+                # Only save plot every 1000 updates to avoid too frequent file I/O
+                if self.counter % 1000 == 0:
+                    self.plot_loss()
 
                 # update target net, save model
                 if i % configs.target_network_update_freq == 0:
@@ -358,6 +399,56 @@ class Learner:
         abs_td_error = td_error.abs()
         flag = (abs_td_error < kappa).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
+    
+    def plot_loss(self):
+        """Plot and save loss curve (replaces previous plot)"""
+        if len(self.loss_history) == 0:
+            print('Warning: No loss data to plot yet')
+            return
+        
+        try:
+            plt.figure(figsize=(10, 6))
+            plt.plot(self.update_counts, self.loss_history, 'b-', linewidth=2, marker='o', markersize=4)
+            plt.xlabel('Weight Updates', fontsize=12)
+            plt.ylabel('Loss', fontsize=12)
+            plt.title('Training Loss', fontsize=14)
+            plt.grid(True, alpha=0.3)
+            
+            # Set x-axis to start from 0
+            if len(self.update_counts) > 0:
+                plt.xlim(left=0, right=max(self.update_counts) * 1.05)
+            
+            # Set axis limits to ensure visibility
+            if len(self.loss_history) > 0:
+                y_min = min(self.loss_history)
+                y_max = max(self.loss_history)
+                y_range = y_max - y_min
+                if y_range > 0:
+                    plt.ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
+                else:
+                    # If all values are the same, add a small range
+                    plt.ylim(y_min - 0.01, y_max + 0.01)
+            
+            plt.tight_layout()
+            
+            # Save plot (replaces previous file if it exists)
+            plot_path = os.path.join(configs.save_path, 'loss_plot.png')
+            os.makedirs(configs.save_path, exist_ok=True)
+            plt.savefig(plot_path, dpi=150, bbox_inches='tight', facecolor='white')
+            plt.close()
+            
+            # Verify the file was created and has content
+            if os.path.exists(plot_path):
+                file_size = os.path.getsize(plot_path)
+                if file_size > 0:
+                    print(f'Loss plot saved/replaced at {plot_path} (updates: {self.counter}, loss: {self.loss_history[-1]:.4f}, data points: {len(self.loss_history)}, file size: {file_size} bytes)')
+                else:
+                    print(f'Warning: Plot file {plot_path} is empty!')
+            else:
+                print(f'Error: Plot file {plot_path} was not created!')
+        except Exception as e:
+            print(f'Error plotting loss: {e}')
+            plt.close('all')  # Close all figures on error
 
     def stats(self, interval: int):
         print('number of updates: {}'.format(self.counter))

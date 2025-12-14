@@ -23,7 +23,10 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
     buffer = GlobalBuffer.remote()
     learner = Learner.remote(buffer)
     time.sleep(1)
-    actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
+    actors = [
+        Actor.remote(i, 0.4 ** (1 + (i / (num_actors - 1)) * 7), learner, buffer)
+        for i in range(num_actors)
+    ]
 
     for actor in actors:
         actor.run.remote()
@@ -33,10 +36,10 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
         ray.get(learner.stats.remote(5))
         ray.get(buffer.stats.remote(5))
 
-    print('start training')
+    print("start training")
     buffer.run.remote()
     learner.run.remote()
-    
+
     done = False
     while not done:
         time.sleep(log_interval)
@@ -44,10 +47,13 @@ def main(num_actors=configs.num_actors, log_interval=configs.log_interval):
         ray.get(buffer.stats.remote(log_interval))
         print()
 
-if __name__ == '__main__':
-    # wandb.init(
-    #     # set the wandb project where this run will be logged
-    #     project="mapf",
-    # )
+
+if __name__ == "__main__":
+    wandb.init(
+        entity="sigmamql",
+        project="SIGMA-MQL",
+        group="single_training",
+        name=f"train_{configs.map_type}_{os.getpid()}",
+    )
     main()
-    # wandb.finish()
+    wandb.finish()

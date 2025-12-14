@@ -24,15 +24,16 @@ action_dim = 5
 ############################################################
 
 # basic training setting
+map_type = 'random'
 num_actors = 20
 log_interval = 10
-training_times = 600000
-save_interval=2000
+training_times = 10000
+save_interval=1000
 gamma=0.99
-batch_size=192
-learning_starts=50000
-target_network_update_freq=2000
-save_path='./models'
+batch_size=256
+learning_starts=25000
+target_network_update_freq=1000
+save_path=f'./models/{map_type}'
 max_episode_length = 512
 seq_len = 16
 load_model = True
@@ -61,8 +62,8 @@ prioritized_replay_beta=0.4
 
 # curriculum learning
 init_env_settings = (3, 10)
-max_num_agents = 5
-max_map_lenght = 40
+max_num_agents = 3
+max_map_length = 20
 pass_rate = 0.9
 # dqn network setting
 cnn_channel = 128
@@ -78,8 +79,6 @@ num_comm_heads = 2
 
 test_seed = 0
 num_test_cases = 200
-
-test_senario = 'house'
 
 test_env_settings = ((40, 4, 0.3), (40, 8, 0.3), (40, 16, 0.3), (40, 32, 0.3), (40, 64, 0.3), (40, 128, 0.3),
                     (80, 4, 0.3), (80, 8, 0.3), (80, 16, 0.3), (80, 32, 0.3), (80, 64, 0.3), (80, 128, 0.3)) # map length, number of agents, density
