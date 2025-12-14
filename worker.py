@@ -80,18 +80,17 @@ class GlobalBuffer:
         '''
         data: actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9, comm_mask 10
         '''
-        # Track statistics from all actors (removed the >= 12 restriction)
-        stat_key = (data[1], data[2])
-        
-        # Create entry if it doesn't exist
-        if stat_key not in self.stat_dict:
-            self.stat_dict[stat_key] = []
-        
-        self.stat_dict[stat_key].append(data[8])
-        if len(self.stat_dict[stat_key]) == 201:
-            self.stat_dict[stat_key].pop(0)
-
         with self.lock:
+            # Track statistics from all actors (removed the >= 12 restriction)
+            stat_key = (data[1], data[2])
+            
+            # Create entry if it doesn't exist
+            if stat_key not in self.stat_dict:
+                self.stat_dict[stat_key] = []
+            
+            self.stat_dict[stat_key].append(data[8])
+            if len(self.stat_dict[stat_key]) == 201:
+                self.stat_dict[stat_key].pop(0)
 
             idxes = np.arange(self.ptr*self.local_buffer_capacity, (self.ptr+1)*self.local_buffer_capacity)
             start_idx = self.ptr*self.local_buffer_capacity
@@ -230,37 +229,38 @@ class GlobalBuffer:
             self.priority_tree.batch_update(np.copy(idxes), np.copy(priorities)**self.alpha)
 
     def stats(self, interval: int):
-        print('buffer update speed: {}/s'.format(self.counter/interval))
-        print('buffer size: {}'.format(self.size))
+        with self.lock:
+            print('buffer update speed: {}/s'.format(self.counter/interval))
+            print('buffer size: {}'.format(self.size))
 
-        print('  ', end='')
-        for i in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
-            print('   {:2d}   '.format(i), end='')
-        print()
-
-        for num_agents in range(configs.init_env_settings[0], configs.max_num_agents+1):
-            print('{:2d}'.format(num_agents), end='')
-            for map_len in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
-                if (num_agents, map_len) in self.stat_dict:
-                    print('{:4d}/{:<3d}'.format(sum(self.stat_dict[(num_agents, map_len)]), len(self.stat_dict[(num_agents, map_len)])), end='')
-                else:
-                    print('   N/A  ', end='')
+            print('  ', end='')
+            for i in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
+                print('   {:2d}   '.format(i), end='')
             print()
 
-        for key, val in self.stat_dict.copy().items():
-            # print('{}: {}/{}'.format(key, sum(val), len(val)))
-            if len(val) == 200 and sum(val) >= 200*configs.pass_rate:
-                # add number of agents
-                add_agent_key = (key[0]+1, key[1]) 
-                if add_agent_key[0] <= configs.max_num_agents and add_agent_key not in self.stat_dict:
-                    self.stat_dict[add_agent_key] = []
-                
-                if key[1] < configs.max_map_length:
-                    add_map_key = (key[0], key[1]+5) 
-                    if add_map_key not in self.stat_dict:
-                        self.stat_dict[add_map_key] = []
-                
-        self.env_settings_set = ray.put(list(self.stat_dict.keys()))
+            for num_agents in range(configs.init_env_settings[0], configs.max_num_agents+1):
+                print('{:2d}'.format(num_agents), end='')
+                for map_len in range(configs.init_env_settings[1], configs.max_map_length+1, 5):
+                    if (num_agents, map_len) in self.stat_dict:
+                        print('{:4d}/{:<3d}'.format(sum(self.stat_dict[(num_agents, map_len)]), len(self.stat_dict[(num_agents, map_len)])), end='')
+                    else:
+                        print('   N/A  ', end='')
+                print()
+
+            for key, val in self.stat_dict.copy().items():
+                # print('{}: {}/{}'.format(key, sum(val), len(val)))
+                if len(val) == 200 and sum(val) >= 200*configs.pass_rate:
+                    # add number of agents
+                    add_agent_key = (key[0]+1, key[1]) 
+                    if add_agent_key[0] <= configs.max_num_agents and add_agent_key not in self.stat_dict:
+                        self.stat_dict[add_agent_key] = []
+                    
+                    if key[1] < configs.max_map_length:
+                        add_map_key = (key[0], key[1]+5) 
+                        if add_map_key not in self.stat_dict:
+                            self.stat_dict[add_map_key] = []
+            
+            self.env_settings_set = ray.put(list(self.stat_dict.keys()))
 
         self.counter = 0
 

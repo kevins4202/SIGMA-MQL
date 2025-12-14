@@ -1,6 +1,15 @@
 import os
+import multiprocessing as mp
 import random
 import time
+
+# Set multiprocessing start method to 'spawn' before any CUDA operations
+# This is required when using CUDA with multiprocessing
+try:
+    mp.set_start_method('spawn', force=True)
+except RuntimeError:
+    # Start method already set, ignore
+    pass
 
 import torch
 import numpy as np

@@ -1,8 +1,11 @@
-'''create test set and test model'''
+"""create test set and test model"""
+
+import os
 import random
 import pickle
+import csv
 import multiprocessing as mp
-from typing import Union
+from typing import Union, List, Tuple
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -16,46 +19,48 @@ torch.manual_seed(configs.test_seed)
 np.random.seed(configs.test_seed)
 random.seed(configs.test_seed)
 test_num = 200
-device = torch.device('cpu')
+device = torch.device("cpu")
 torch.set_num_threads(1)
 
-def create_test(test_env_settings, num_test_cases):
 
-    for map_length, num_agents, density in test_env_settings:
+def create_test(test_map_type, test_env_settings, num_test_cases):
+    """
+    Create test sets for a specific map type
+    Temporarily sets configs.map_type to generate the correct map type
+    """
+    original_map_type = configs.map_type
+    configs.map_type = test_map_type
 
-        name = './test_set/{}length_{}agents_{}density.pth'.format(map_length, num_agents, density)
-        print('-----{}length {}agents {}density-----'.format(map_length, num_agents, density))
+    try:
+        for map_length, num_agents, density in test_env_settings:
 
-        tests = []
+            name = "./test_set/{}/{}length_{}agents_{}density.pth".format(
+                test_map_type, map_length, num_agents, density
+            )
+            os.makedirs(os.path.dirname(name), exist_ok=True)
+            print(
+                "-----{} map: {}length {}agents {}density-----".format(
+                    test_map_type, map_length, num_agents, density
+                )
+            )
 
-        env = Environment(fix_density=density, num_agents=num_agents, map_length=map_length)
+            tests = []
 
-        for _ in tqdm(range(num_test_cases)):
-            tests.append((np.copy(env.map), np.copy(env.agents_pos), np.copy(env.goals_pos)))
-            env.reset(num_agents=num_agents, map_length=map_length)
-        print()
+            env = Environment(
+                fix_density=density, num_agents=num_agents, map_length=map_length
+            )
 
-        with open(name, 'wb') as f:
-            pickle.dump(tests, f)
+            for _ in tqdm(range(num_test_cases)):
+                tests.append(
+                    (np.copy(env.map), np.copy(env.agents_pos), np.copy(env.goals_pos))
+                )
+                env.reset(num_agents=num_agents, map_length=map_length)
+            print()
 
-def create_test_house(test_env_settings, num_test_cases):
-
-    for map_length, num_agents, density in test_env_settings:
-
-        name = './house_test_set/{}length_{}agents_{}density.pth'.format(map_length, num_agents, density)
-        print('-----{}length {}agents {}density-----'.format(map_length, num_agents, density))
-
-        tests = []
-
-        env = Environment(fix_density=density, num_agents=num_agents, map_length=map_length)
-
-        for _ in tqdm(range(num_test_cases)):
-            tests.append((np.copy(env.map), np.copy(env.agents_pos), np.copy(env.goals_pos)))
-            env.reset(num_agents=num_agents, map_length=map_length)
-        print()
-
-        with open(name, 'wb') as f:
-            pickle.dump(tests, f)
+            with open(name, "wb") as f:
+                pickle.dump(tests, f)
+    finally:
+        configs.map_type = original_map_type
 
 
 # def render_test_case(model, test_case, number):
@@ -83,7 +88,7 @@ def create_test_house(test_env_settings, num_test_cases):
 #         start = time.time()
 #         for i in range(test_num):
 #             env.load(tests[i][0], tests[i][1], tests[i][2])
-            
+
 #             done = False
 #             network.reset()
 
@@ -106,7 +111,7 @@ def create_test_house(test_env_settings, num_test_cases):
 
 #             if i == case and show:
 #                 env.close(True)
-        
+
 #         f_rate = (test_num-fail)/test_num
 #         mean_steps = sum(steps)/test_num
 #         duration = time.time()-start
@@ -119,92 +124,94 @@ def create_test_house(test_env_settings, num_test_cases):
 #         model_name -= configs.save_interval
 
 
-def test_model(model_range):
-    '''
-    test model in 'models' file with model number 
-    '''
+def test_model(model_list: List[Tuple[str, int]]):
+    """
+    Test models on specified map types
+    Args:
+        model_list: List of tuples (map_type, model_number), e.g., [('house', 10000), ('random', 5000)]
+    """
     network = Network()
     network.eval()
     network.to(device)
-    if configs.map_type == 'house':
-        test_set = configs.house_test_env_settings
-    else:
-        test_set = configs.test_env_settings
+    test_set = configs.test_env_settings
 
     pool = mp.Pool(mp.cpu_count())
 
-    def write_to_file(filename, content, mode='a'):
-        with open(filename, mode) as file:
-            file.write(content + '\n')
+    # Prepare CSV output
+    csv_data = []
+    csv_headers = [
+        "map_type",
+        "model",
+        "length",
+        "agents",
+        "density",
+        "success_rate",
+        "avg_steps",
+    ]
 
-    # if isinstance(model_range, int):
-    #     filename = f"./models/result/{model_range}.txt"
-    #     state_dict = torch.load(f'./models/{model_range}.pth', map_location=device)
-    #     network.load_state_dict(state_dict)
-    #     network.eval()
-    #     network.share_memory()
+    for test_map_type, model in model_list:
+        model_path = f"./models/{test_map_type}/{model}.pth"
+        if not os.path.exists(model_path):
+            print(
+                f"Warning: Model {model_path} not found. Skipping {test_map_type}, model {model}."
+            )
+            continue
 
-    #     write_to_file(filename, f'----------test model {model_range}----------', 'w')
-
-    #     for case in test_set:
-    #         write_to_file(filename, f"test set: {case[0]} length {case[1]} agents {case[2]} density")
-    #         if configs.map_type == 'house':
-    #             with open(f'./house_test_set/{case[0]}length_{case[1]}agents_{case[2]}density.pth', 'rb') as f:
-    #                 tests = pickle.load(f)
-    #         else:
-    #             with open(f'./test_set/{case[0]}length_{case[1]}agents_{case[2]}density.pth', 'rb') as f:
-    #                 tests = pickle.load(f)
-
-    #         tests = [(test, network) for test in tests]
-    #         ret = pool.map(test_one_case, tests)
-
-    #         success = 0
-    #         avg_step = 0
-    #         for i, j in ret:
-    #             success += i
-    #             avg_step += j
-
-    #         write_to_file(filename, f"success rate: {success/len(ret)*100:.2f}%")
-    #         write_to_file(filename, f"average step: {avg_step/len(ret)}")
-    #         write_to_file(filename, "")
-
-    # elif isinstance(model_range, tuple):
-    for model_name in model_range:
-        filename = f"./models/result/{model_name}.txt"
-        state_dict = torch.load(f'./models/{model_name}.pth', map_location=device)
+        print(f"Testing {test_map_type} model {model}...")
+        state_dict = torch.load(model_path, map_location=device)
         network.load_state_dict(state_dict)
         network.eval()
         network.share_memory()
 
-        print(f'----------test model {model_name}----------')
-        write_to_file(filename, f'----------test model {model_name}----------', 'w')
-
         for case in test_set:
-            write_to_file(filename, f"test set: {case[0]} length {case[1]} agents {case[2]} density")
-            if configs.map_type == 'house':
-                with open(f'./house_test_set/{case[0]}length_{case[1]}agents_{case[2]}density.pth', 'rb') as f:
-                    tests = pickle.load(f)
-            else:
-                with open(f'./test_set/{case[0]}length_{case[1]}agents_{case[2]}density.pth', 'rb') as f:
-                    tests = pickle.load(f)
+            map_length, num_agents, density = case
+            test_file = f"./test_set/{test_map_type}/{map_length}length_{num_agents}agents_{density}density.pth"
+            if not os.path.exists(test_file):
+                print(f"  Warning: Test set {test_file} not found. Skipping.")
+                continue
+
+            with open(test_file, "rb") as f:
+                tests = pickle.load(f)
 
             tests = [(test, network) for test in tests]
             ret = pool.map(test_one_case, tests)
 
             success = 0
             avg_step = 0
-            section = 0
-            for i, j, k in ret:
+
+            for i, j, _ in ret:
                 success += i
                 avg_step += j
-                section += k
 
-            write_to_file(filename, f"success rate: {success/len(ret)*100:.2f}%")
-            write_to_file(filename, f"average step: {avg_step/len(ret)}")
-            write_to_file(filename, f"section map value: {section/len(ret)}")
-            write_to_file(filename, "")
+            success_rate = success / len(ret) * 100
+            avg_steps = avg_step / len(ret)
 
-        write_to_file(filename, '\n')
+            # Add to CSV data
+            csv_data.append(
+                [
+                    test_map_type,
+                    model,
+                    map_length,
+                    num_agents,
+                    density,
+                    f"{success_rate:.2f}",
+                    f"{avg_steps:.2f}",
+                ]
+            )
+
+            print(
+                f"  {map_length}length {num_agents}agents {density}density: {success_rate:.2f}% success, {avg_steps:.2f} avg steps"
+            )
+
+    # Save CSV file
+    csv_filename = "test_results.csv"
+    with open(csv_filename, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(csv_headers)
+        writer.writerows(csv_data)
+
+    print(f"\nResults saved to {csv_filename}")
+
 
 def test_one_case(args):
 
@@ -213,50 +220,62 @@ def test_one_case(args):
     env = Environment()
     env.load(env_set[0], env_set[1], env_set[2])
     obs, pos = env.observe()
-    
+
     done = False
     network.reset()
 
     step = 0
     section = 0
     while not done and env.steps < configs.max_episode_length:
-        actions, _, _, _, sheaf_section = network.step_test(torch.as_tensor(obs.astype(np.float32)), torch.as_tensor(pos.astype(np.float32)))
+        actions, _, _, _, sheaf_section = network.step_test(
+            torch.as_tensor(obs.astype(np.float32)),
+            torch.as_tensor(pos.astype(np.float32)),
+        )
         (obs, pos), _, done, _ = env.step(actions)
         step += 1
         section += sheaf_section
     section = section / step
     return np.array_equal(env.agents_pos, env.goals_pos), step, section
 
-def make_animation(model_name: int, test_set_name: tuple, test_case_idx: int, steps: int = 25, env_name: str = 'test_set/40length_64agents_0.3density.pth'):
-    '''
+
+def make_animation(
+    test_map_type: str, model_name: int, test_case: tuple, steps: int = 25
+):
+    """
     visualize running results
+    test_map_type: map type (e.g., 'house', 'random', 'maze')
     model_name: model number in 'models' file
-    test_set_name: (length, num_agents, density)
-    test_case_idx: int, the test case index in test set
+    test_case: tuple of (length, num_agents, density) for the test case
     steps: how many steps to visualize in test case
-    '''
-    color_map = np.array([[255, 255, 255],   # white
-                    [190, 190, 190],   # gray
-                    [0, 191, 255],   # blue
-                    [255, 165, 0],   # orange
-                    [0, 250, 154]])  # green
+    """
+    color_map = np.array(
+        [
+            [255, 255, 255],  # white
+            [190, 190, 190],  # gray
+            [0, 191, 255],  # blue
+            [255, 165, 0],  # orange
+            [0, 250, 154],
+        ]
+    )  # green
 
     network = Network()
     network.eval()
     network.to(device)
-    state_dict = torch.load('models/{}.pth'.format(model_name), map_location=device)
+    state_dict = torch.load(
+        f"models/{test_map_type}/{model_name}.pth", map_location=device
+    )
     network.load_state_dict(state_dict)
 
-    test_name = env_name
+    test_name = f"test_set/{test_map_type}/{test_case[0]}length_{test_case[1]}agents_{test_case[2]}density.pth"
 
-    with open(test_name, 'rb') as f:
+    with open(test_name, "rb") as f:
         tests = pickle.load(f)
 
     env = Environment()
-    env.load(tests[test_case_idx][0], tests[test_case_idx][1], tests[test_case_idx][2])
+    env.load(tests[0][0], tests[0][1], tests[0][2])
 
     fig = plt.figure()
-            
+
     done = False
     obs, pos = env.observe()
 
@@ -276,14 +295,20 @@ def make_animation(model_name: int, test_set_name: tuple, test_case_idx: int, st
 
         imgs[-1].append(img)
 
-        for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
-            text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+        for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(
+            zip(env.agents_pos, env.goals_pos)
+        ):
+            text = plt.text(
+                agent_y, agent_x, i, color="black", ha="center", va="center"
+            )
             imgs[-1].append(text)
-            text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+            text = plt.text(goal_y, goal_x, i, color="black", ha="center", va="center")
             imgs[-1].append(text)
 
-
-        actions, _, _, _ = network.step(torch.from_numpy(obs.astype(np.float32)).to(device), torch.from_numpy(pos.astype(np.float32)).to(device))
+        actions, _, _, _ = network.step(
+            torch.from_numpy(obs.astype(np.float32)).to(device),
+            torch.from_numpy(pos.astype(np.float32)).to(device),
+        )
         (obs, pos), _, done, _ = env.step(actions)
         # print(done)
 
@@ -298,33 +323,59 @@ def make_animation(model_name: int, test_set_name: tuple, test_case_idx: int, st
         map = map.astype(np.uint8)
 
         img = plt.imshow(color_map[map], animated=True)
-        for _ in range(steps-env.steps):
+        for _ in range(steps - env.steps):
             imgs.append([])
             imgs[-1].append(img)
-            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
-                text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(
+                zip(env.agents_pos, env.goals_pos)
+            ):
+                text = plt.text(
+                    agent_y, agent_x, i, color="black", ha="center", va="center"
+                )
                 imgs[-1].append(text)
-                text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+                text = plt.text(
+                    goal_y, goal_x, i, color="black", ha="center", va="center"
+                )
                 imgs[-1].append(text)
 
+    ani = animation.ArtistAnimation(
+        fig, imgs, interval=600, blit=True, repeat_delay=1000
+    )
 
-    ani = animation.ArtistAnimation(fig, imgs, interval=600, blit=True, repeat_delay=1000)
+    # Create videos directory if it doesn't exist
+    os.makedirs("videos", exist_ok=True)
 
-    ani.save('videos/{}_{}_{}_{}.mp4'.format(model_name, *test_set_name, test_case_idx))
+    # Save as GIF
+    output_file = f"videos/{test_map_type}_{model_name}_{test_case[0]}length_{test_case[1]}agents_{test_case[2]}density_0.gif"
+    ani.save(output_file, writer="pillow")
 
 
-if __name__ == '__main__':
-    
-    # create maze test set
-    # create_test(test_env_settings=configs.test_env_settings, num_test_cases=configs.num_test_cases)
-    
-    # create room like test set
-    # create_test_house(test_env_settings=configs.house_test_env_settings, num_test_cases=configs.num_test_cases)
+if __name__ == "__main__":
 
-    # test model
-    # test_model(['502000'])
+    # create test sets for all map types
+    # for test_map_type in configs.test_map_types:
+    #     print(f"\n========== Creating test sets for {test_map_type} ==========")
+    #     create_test(
+    #         test_map_type,
+    #         test_env_settings=configs.test_env_settings,
+    #         num_test_cases=configs.num_test_cases,
+    #     )
 
-    # visualize result
-    model_name = '84000_house'
-    test_env_map = 'house_test_set/60length_128agents_0.3density.pth'
-    make_animation(model_name, (60, 128), 1, 512, test_env_map)
+    # test model across specified map types and models
+    test_model(
+        [
+            ("house", 1000),
+            ("house", 2000),
+            ("house", 3000),
+            ("house", 4000),
+            ("house", 5000),
+            ("house", 6000),
+            ("house", 7000),
+            ("house", 8000),
+            ("house", 9000),
+            ("house", 10000),
+        ]
+    )
+
+    # visualize result (example for one map type)
+    # make_animation('house', 10000, (30, 24, 0.3), 100)

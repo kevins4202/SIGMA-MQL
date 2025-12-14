@@ -24,26 +24,24 @@ action_dim = 5
 ############################################################
 
 # basic training setting
-map_type = 'random'
+map_type = 'warehouse'
 num_actors = 20
 log_interval = 10
 training_times = 10000
 save_interval=1000
 gamma=0.99
-batch_size=256
+batch_size=128
 learning_starts=25000
 target_network_update_freq=1000
 save_path=f'./models/{map_type}'
-max_episode_length = 512
+max_episode_length = 256
 seq_len = 16
-load_model = True
+load_model = False
 load_path = './models/save_model/model_house/84000_house.pth'
 
 Advantage_all = True
 Sec_cons = True
 lambdas = 0.001
-
-max_episode_length = max_episode_length
 
 actor_update_steps = 400
 
@@ -80,9 +78,7 @@ num_comm_heads = 2
 test_seed = 0
 num_test_cases = 200
 
-test_env_settings = ((40, 4, 0.3), (40, 8, 0.3), (40, 16, 0.3), (40, 32, 0.3), (40, 64, 0.3), (40, 128, 0.3),
-                    (80, 4, 0.3), (80, 8, 0.3), (80, 16, 0.3), (80, 32, 0.3), (80, 64, 0.3), (80, 128, 0.3)) # map length, number of agents, density
-# house_test_env_settings = ((40, 4, 0.3), (40, 8, 0.3), (40, 16, 0.3), (40, 32, 0.3), (40, 64, 0.3),
-#                     (60, 4, 0.3), (60, 8, 0.3), (60, 16, 0.3), (60, 32, 0.3), (60, 64, 0.3)) # map length, number of agents, density
-house_test_env_settings = ((40, 4, 0.3), (40, 8, 0.3), (40, 16, 0.3), (40, 32, 0.3), (40, 64, 0.3), (40, 128, 0.3),
-                    (60, 4, 0.3), (60, 8, 0.3), (60, 16, 0.3), (60, 32, 0.3), (60, 64, 0.3), (60, 128, 0.3))
+test_env_settings = ((15, 3, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3), (30, 24, 0.3))
+
+# List of map types to create test sets for and test models on
+test_map_types = ['random', 'warehouse', 'house', 'maze']
