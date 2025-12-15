@@ -4,6 +4,7 @@ import os
 from copy import deepcopy
 from typing import Tuple
 import threading
+import pickle
 import ray
 import torch
 import torch.nn as nn
@@ -18,6 +19,7 @@ from model import Network
 from environment import Environment
 from buffer import SumTree, LocalBuffer
 import configs
+from test import test_one_case
 
 @ray.remote(num_cpus=1)
 class GlobalBuffer:
@@ -383,6 +385,31 @@ class Learner:
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
         self.weights_id = ray.put(state_dict)
+
+    def test_on_smallest_house(self):
+        """Test the current model on one test case from the smallest house test set"""
+        test_file = "./test_set/house/15length_3agents_0.2density.pth"
+
+        if not os.path.exists(test_file):
+            print(f"Test file {test_file} not found, skipping test")
+            return
+
+        # Load test cases and use the first one
+        with open(test_file, 'rb') as f:
+            tests = pickle.load(f)
+
+        # Set model to eval mode
+        self.model.eval()
+
+        # Run one test case
+        success, steps, _ = test_one_case((tests[0], self.model))
+
+        # Set model back to train mode
+        self.model.train()
+
+        result = "SUCCESS" if success else "FAIL"
+        print(f"[Test] Update {self.counter}: {result}, Steps: {steps}")
+        return success, steps
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
