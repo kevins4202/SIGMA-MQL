@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 from matplotlib import colors
 import configs
-from map_generator import house_generator
+from map_generator import house_generator, warehouse_generator, maze_generator
 
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int_)
@@ -89,24 +89,46 @@ class Environment:
             self.fix_density = True
             self.obstacle_density = fix_density
 
+        requested_map_size = self.map_size
+
         if configs.map_type == 'house':
             # Generate the map using house_generator
             self.map, _ = house_generator(env_size=self.map_size[0])
-        else:
+        elif configs.map_type == 'warehouse':
+            # Generate warehouse map - calculate num_block based on map size
+            num_block = (max(1, self.map_size[0] // 30), max(1, self.map_size[1] // 30))
+            self.map = -warehouse_generator(num_block=num_block)
+            self.map_size = self.map.shape
+        elif configs.map_type == 'maze':
+            # Generate maze map
+            self.map = -maze_generator(env_size=(self.map_size[0], self.map_size[0]),
+                                       obstacle_density=[self.obstacle_density, self.obstacle_density])
+            self.map_size = self.map.shape
+        else:  # 'random' or any other type defaults to random
             self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
-        
+
         partition_list = map_partition(self.map)
         partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
 
         while len(partition_list) == 0:
             if configs.map_type == 'house':
-            # Generate the map using house_generator
+                # Generate the map using house_generator
                 self.map, _ = house_generator(env_size=self.map_size[0])
-            else:
+            elif configs.map_type == 'warehouse':
+                # Generate warehouse map
+                num_block = (max(1, requested_map_size[0] // 30), max(1, requested_map_size[1] // 30))
+                self.map = -warehouse_generator(num_block=num_block)
+                self.map_size = self.map.shape
+            elif configs.map_type == 'maze':
+                # Generate maze map
+                self.map = -maze_generator(env_size=(requested_map_size[0], requested_map_size[0]),
+                                           obstacle_density=[self.obstacle_density, self.obstacle_density])
+                self.map_size = self.map.shape
+            else:  # 'random' or any other type defaults to random
                 self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
-        
+
         self.agents_pos = np.empty((self.num_agents, 2), dtype=np.int_)
         self.goals_pos = np.empty((self.num_agents, 2), dtype=np.int_)
 
@@ -160,11 +182,23 @@ class Environment:
 
         if not self.fix_density:
             self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
-        
+
+        requested_map_size = self.map_size
+
         if configs.map_type == 'house':
             # Generate the map using house_generator
             self.map, _ = house_generator(env_size=self.map_size[0])
-        else:
+        elif configs.map_type == 'warehouse':
+            # Generate warehouse map
+            num_block = (max(1, self.map_size[0] // 30), max(1, self.map_size[1] // 30))
+            self.map = -warehouse_generator(num_block=num_block)
+            self.map_size = self.map.shape
+        elif configs.map_type == 'maze':
+            # Generate maze map
+            self.map = -maze_generator(env_size=(self.map_size[0], self.map_size[0]),
+                                       obstacle_density=[self.obstacle_density, self.obstacle_density])
+            self.map_size = self.map.shape
+        else:  # 'random' or any other type defaults to random
             self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
 
         partition_list = map_partition(self.map)
@@ -174,11 +208,21 @@ class Environment:
             if configs.map_type == 'house':
                 # Generate the map using house_generator
                 self.map, _ = house_generator(env_size=self.map_size[0])
-            else:
+            elif configs.map_type == 'warehouse':
+                # Generate warehouse map
+                num_block = (max(1, requested_map_size[0] // 30), max(1, requested_map_size[1] // 30))
+                self.map = -warehouse_generator(num_block=num_block)
+                self.map_size = self.map.shape
+            elif configs.map_type == 'maze':
+                # Generate maze map
+                self.map = -maze_generator(env_size=(requested_map_size[0], requested_map_size[0]),
+                                           obstacle_density=[self.obstacle_density, self.obstacle_density])
+                self.map_size = self.map.shape
+            else:  # 'random' or any other type defaults to random
                 self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
-        
+
         self.agents_pos = np.empty((self.num_agents, 2), dtype=np.int_)
         self.goals_pos = np.empty((self.num_agents, 2), dtype=np.int_)
 
@@ -476,7 +520,7 @@ class Environment:
 
         map = np.copy(self.map)
         for agent_id in range(self.num_agents):
-            if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
+            if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]): 
                 map[tuple(self.agents_pos[agent_id])] = 4
             else:
                 map[tuple(self.agents_pos[agent_id])] = 2
