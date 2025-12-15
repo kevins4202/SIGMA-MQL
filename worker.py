@@ -40,6 +40,9 @@ class GlobalBuffer:
         self.counter = 0
         self.batched_data = []
         self.stat_dict = {init_env_settings:[]}
+        self.arrival_dict = {init_env_settings:[]}
+        self.episode_length_dict = {init_env_settings:[]}
+        self.reward_dict = {init_env_settings:[]}
         self.lock = threading.Lock()
         self.env_settings_set = ray.put([init_env_settings])
 
@@ -80,7 +83,7 @@ class GlobalBuffer:
 
     def add(self, data: Tuple):
         '''
-        data: actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9, comm_mask 10
+        data: actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9, comm_mask 10, num_arrived_agents 11
         '''
         with self.lock:
             # Track statistics from all actors (removed the >= 12 restriction)
@@ -89,10 +92,30 @@ class GlobalBuffer:
             # Create entry if it doesn't exist
             if stat_key not in self.stat_dict:
                 self.stat_dict[stat_key] = []
+                self.arrival_dict[stat_key] = []
+                self.episode_length_dict[stat_key] = []
+                self.reward_dict[stat_key] = []
             
             self.stat_dict[stat_key].append(data[8])
             if len(self.stat_dict[stat_key]) == 201:
                 self.stat_dict[stat_key].pop(0)
+            
+            # Track arrival counts (number of agents that reached goals)
+            num_arrived_agents = data[11] if len(data) > 11 else (data[1] if data[8] else 0)
+            self.arrival_dict[stat_key].append(num_arrived_agents)
+            if len(self.arrival_dict[stat_key]) == 201:
+                self.arrival_dict[stat_key].pop(0)
+            
+            # Track episode lengths
+            self.episode_length_dict[stat_key].append(data[9])
+            if len(self.episode_length_dict[stat_key]) == 201:
+                self.episode_length_dict[stat_key].pop(0)
+            
+            # Track total reward per episode
+            total_reward = np.sum(data[5])
+            self.reward_dict[stat_key].append(total_reward)
+            if len(self.reward_dict[stat_key]) == 201:
+                self.reward_dict[stat_key].pop(0)
 
             idxes = np.arange(self.ptr*self.local_buffer_capacity, (self.ptr+1)*self.local_buffer_capacity)
             start_idx = self.ptr*self.local_buffer_capacity
@@ -256,15 +279,51 @@ class GlobalBuffer:
                     add_agent_key = (key[0]+1, key[1]) 
                     if add_agent_key[0] <= configs.max_num_agents and add_agent_key not in self.stat_dict:
                         self.stat_dict[add_agent_key] = []
+                        self.arrival_dict[add_agent_key] = []
+                        self.episode_length_dict[add_agent_key] = []
+                        self.reward_dict[add_agent_key] = []
                     
                     if key[1] < configs.max_map_length:
                         add_map_key = (key[0], key[1]+5) 
                         if add_map_key not in self.stat_dict:
                             self.stat_dict[add_map_key] = []
+                            self.arrival_dict[add_map_key] = []
+                            self.episode_length_dict[add_map_key] = []
+                            self.reward_dict[add_map_key] = []
             
             self.env_settings_set = ray.put(list(self.stat_dict.keys()))
+            
+            # Calculate aggregated metrics for wandb logging
+            # Success rate: percentage of episodes where all agents reached goals
+            total_episodes = sum(len(val) for val in self.stat_dict.values())
+            successful_episodes = sum(sum(val) for val in self.stat_dict.values())
+            success_rate = successful_episodes / total_episodes if total_episodes > 0 else 0.0
+            
+            # Arrival rate: average number of agents that reached goals per episode
+            total_arrivals = sum(sum(val) for val in self.arrival_dict.values())
+            arrival_rate = total_arrivals / total_episodes if total_episodes > 0 else 0.0
+            
+            # Episode length: average episode length
+            total_lengths = sum(sum(val) for val in self.episode_length_dict.values())
+            episode_length = total_lengths / total_episodes if total_episodes > 0 else 0.0
+            
+            # Reward per episode: average total reward per episode
+            total_rewards = sum(sum(val) for val in self.reward_dict.values())
+            reward_per_episode = total_rewards / total_episodes if total_episodes > 0 else 0.0
+            
+            buffer_update_speed = self.counter / interval if interval > 0 else 0.0
+            
+            metrics = {
+                'buffer_size': self.size,
+                'buffer_update_speed': buffer_update_speed,
+                'success_rate': success_rate,
+                'arrival_rate': arrival_rate,
+                'episode_length': episode_length,
+                'reward_per_episode': reward_per_episode
+            }
 
         self.counter = 0
+        return metrics
 
     def ready(self):
         if len(self) >= configs.learning_starts:
@@ -307,6 +366,7 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
+        self.sheaf_section_loss = 0
         
         # For plotting loss
         self.loss_history = []
@@ -360,66 +420,67 @@ class Learner:
 
         while not ray.get(self.buffer.check_done.remote()) and self.counter < configs.training_times:
 
-            for i in range(1, 10001):
+            
+            data_id = ray.get(self.buffer.get_data.remote())
+            data = ray.get(data_id)
 
-                data_id = ray.get(self.buffer.get_data.remote())
-                data = ray.get(data_id)
-    
-                b_obs, b_action, b_reward, b_done, b_steps, b_seq_len, b_hidden, b_comm_mask, idxes, weights, old_ptr = data
-                b_obs, b_action, b_reward = b_obs.to(self.device), b_action.to(self.device), b_reward.to(self.device)
-                b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-                b_hidden = b_hidden.to(self.device)
-                b_comm_mask = b_comm_mask.to(self.device)
+            b_obs, b_action, b_reward, b_done, b_steps, b_seq_len, b_hidden, b_comm_mask, idxes, weights, old_ptr = data
+            b_obs, b_action, b_reward = b_obs.to(self.device), b_action.to(self.device), b_reward.to(self.device)
+            b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
+            b_hidden = b_hidden.to(self.device)
+            b_comm_mask = b_comm_mask.to(self.device)
 
-                b_next_seq_len = [ (seq_len+forward_steps).item() for seq_len, forward_steps in zip(b_seq_len, b_steps) ]
-                b_next_seq_len = torch.LongTensor(b_next_seq_len)
+            b_next_seq_len = [ (seq_len+forward_steps).item() for seq_len, forward_steps in zip(b_seq_len, b_steps) ]
+            b_next_seq_len = torch.LongTensor(b_next_seq_len)
 
-                with torch.no_grad():
-                    b_q_ = (1 - b_done) * self.tar_model(b_obs, b_next_seq_len, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
+            with torch.no_grad():
+                b_q_tar, _ = self.tar_model(b_obs, b_next_seq_len, b_hidden, b_comm_mask)
+                b_q_ = (1 - b_done) * b_q_tar.max(1, keepdim=True)[0]
 
-                b_q = self.model(b_obs[:, :-configs.forward_steps], b_seq_len, b_hidden, b_comm_mask[:, :-configs.forward_steps]).gather(1, b_action)
+            b_q, sheaf_loss = self.model(b_obs[:, :-configs.forward_steps], b_seq_len, b_hidden, b_comm_mask[:, :-configs.forward_steps])
+            b_q = b_q.gather(1, b_action)
+            self.sheaf_section_loss += sheaf_loss.item()
 
-                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
+            td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                priorities = td_error.detach().squeeze().abs().clamp(1e-4).cpu().numpy()
+            priorities = td_error.detach().squeeze().abs().clamp(1e-4).cpu().numpy()
 
-                loss = (weights * self.huber_loss(td_error)).mean()
-                self.loss += loss.item()
+            loss = (weights * self.huber_loss(td_error)).mean()
+            self.loss += loss.item()
 
-                self.optimizer.zero_grad()
-                scaler.scale(loss).backward()
+            self.optimizer.zero_grad()
+            scaler.scale(loss).backward()
 
-                scaler.unscale_(self.optimizer)
-                nn.utils.clip_grad_norm_(self.model.parameters(), 40)
+            scaler.unscale_(self.optimizer)
+            nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
-                scaler.step(self.optimizer)
-                scaler.update()
- 
-                self.scheduler.step()
+            scaler.step(self.optimizer)
+            scaler.update()
 
-                # store new weights in shared memory
-                if i % 5  == 0:
-                    self.store_weights()
+            self.scheduler.step()
 
-                self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
+            # store new weights in shared memory
+            if self.counter % 5  == 0:
+                self.store_weights()
 
-                self.counter += 1
-                
-                # Record individual loss value at every update (no averaging)
-                self.loss_history.append(loss.item())
-                self.update_counts.append(self.counter)
-                
-                # Only save plot every 1000 updates to avoid too frequent file I/O
-                if self.counter % 1000 == 0:
-                    self.plot_loss()
+            self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
-                # update target net, save model
-                if i % configs.target_network_update_freq == 0:
-                    self.tar_model.load_state_dict(self.model.state_dict())
-                
-                if i % configs.save_interval == 0:
-                    torch.save(self.model.state_dict(), os.path.join(configs.save_path, '{}.pth'.format(self.counter)))
-                    self.test_on_smallest_house()
+            self.counter += 1
+            
+            # Record individual loss value at every update (no averaging)
+            self.loss_history.append(loss.item())
+            self.update_counts.append(self.counter)
+            
+            # Only save plot every 1000 updates to avoid too frequent file I/O
+            if self.counter % 1000 == 0:
+                self.plot_loss()
+
+            # update target net, save model
+            if self.counter % configs.target_network_update_freq == 0:
+                self.tar_model.load_state_dict(self.model.state_dict())
+            
+            if self.counter % configs.save_interval == 0:
+                torch.save(self.model.state_dict(), os.path.join(configs.save_path, '{}.pth'.format(self.counter)))
 
         self.done = True
 
@@ -481,12 +542,26 @@ class Learner:
     def stats(self, interval: int):
         print('number of updates: {}'.format(self.counter))
         print('update speed: {}/s'.format((self.counter-self.last_counter)/interval))
+        
+        updates = self.counter
+        update_speed = (self.counter - self.last_counter) / interval if interval > 0 else 0.0
+        loss = self.loss / (self.counter - self.last_counter) if self.counter != self.last_counter else 0.0
+        sheaf_section_loss = self.sheaf_section_loss / (self.counter - self.last_counter) if self.counter != self.last_counter else 0.0
+        
         if self.counter != self.last_counter:
-            print('loss: {:.4f}'.format(self.loss / (self.counter-self.last_counter)))
+            print('loss: {:.4f}'.format(loss))
+        
+        metrics = {
+            'updates': updates,
+            'update_speed': update_speed,
+            'loss': loss,
+            'sheaf_section_loss': sheaf_section_loss
+        }
         
         self.last_counter = self.counter
         self.loss = 0
-        return self.done
+        self.sheaf_section_loss = 0
+        return self.done, metrics
 
 
 @ray.remote(num_cpus=1)
@@ -522,12 +597,15 @@ class Actor:
             if done == False and self.env.steps < self.max_episode_length:
                 obs, pos = next_obs, next_pos
             else:
+                # Calculate number of agents that reached their goals
+                num_arrived_agents = np.sum(np.all(self.env.agents_pos == self.env.goals_pos, axis=1))
+                
                 # finish and send buffer
                 if done:
-                    data = local_buffer.finish()
+                    data = local_buffer.finish(num_arrived_agents=num_arrived_agents)
                 else:
                     _, q_val, hidden, comm_mask = self.model.step(torch.from_numpy(next_obs.astype(np.float32)), torch.from_numpy(next_pos.astype(np.float32)))
-                    data = local_buffer.finish(q_val[0], comm_mask)
+                    data = local_buffer.finish(q_val[0], comm_mask, num_arrived_agents=num_arrived_agents)
 
                 self.global_buffer.add.remote(data)
                 done = False
