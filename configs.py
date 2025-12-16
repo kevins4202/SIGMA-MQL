@@ -24,13 +24,13 @@ action_dim = 5
 ############################################################
 
 # basic training setting
-map_type = 'warehouse'
+map_type = 'house'
 num_actors = 20
 log_interval = 10
-training_times = 10000
+training_times = 50000
 save_interval=1000
 gamma=0.99
-batch_size=128
+batch_size=192
 learning_starts=25000
 target_network_update_freq=1000
 save_path=f'./models/{map_type}'

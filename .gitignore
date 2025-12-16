@@ -8,16 +8,6 @@ __pycache__/
 dist/
 build/
 
-# Models and checkpoints
-models/*.pth
-models/*.png
-models/*/
-!models/.gitkeep
-
-# Test sets (large binary files)
-test_set/
-house_test_set/
-
 # Wandb
 wandb/
 
