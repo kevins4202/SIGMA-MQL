@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 from matplotlib import colors
 import configs
-from map_generator import house_generator, warehouse_generator, maze_generator
+from map_generator import house_generator, warehouse_generator, maze_generator, random_generator
 
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int_)
@@ -95,17 +95,19 @@ class Environment:
             # Generate the map using house_generator
             self.map, _ = house_generator(env_size=self.map_size[0])
         elif configs.map_type == 'warehouse':
-            # Generate warehouse map - calculate num_block based on map size
-            num_block = (max(1, self.map_size[0] // 30), max(1, self.map_size[1] // 30))
-            self.map = -warehouse_generator(num_block=num_block)
-            self.map_size = self.map.shape
+            # Generate warehouse map with shelves that fit within the specified size
+            self.map = warehouse_generator(env_size=self.map_size)
         elif configs.map_type == 'maze':
             # Generate maze map
             self.map = -maze_generator(env_size=(self.map_size[0], self.map_size[0]),
                                        obstacle_density=[self.obstacle_density, self.obstacle_density])
             self.map_size = self.map.shape
+        elif configs.map_type == 'random':
+            # Use random_generator (fixed to handle equal PROB values)
+            self.map = -random_generator(SIZE_O=(self.map_size[0], self.map_size[1]), 
+                                         PROB_O=(self.obstacle_density, self.obstacle_density))
         else:  # 'random' or any other type defaults to random
-            self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
+            raise ValueError(f"Invalid map type: {configs.map_type}")
 
         partition_list = map_partition(self.map)
         partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
@@ -115,10 +117,8 @@ class Environment:
                 # Generate the map using house_generator
                 self.map, _ = house_generator(env_size=self.map_size[0])
             elif configs.map_type == 'warehouse':
-                # Generate warehouse map
-                num_block = (max(1, requested_map_size[0] // 30), max(1, requested_map_size[1] // 30))
-                self.map = -warehouse_generator(num_block=num_block)
-                self.map_size = self.map.shape
+                # Generate warehouse map with shelves that fit within the specified size
+                self.map = warehouse_generator(env_size=requested_map_size)
             elif configs.map_type == 'maze':
                 # Generate maze map
                 self.map = -maze_generator(env_size=(requested_map_size[0], requested_map_size[0]),
@@ -189,10 +189,8 @@ class Environment:
             # Generate the map using house_generator
             self.map, _ = house_generator(env_size=self.map_size[0])
         elif configs.map_type == 'warehouse':
-            # Generate warehouse map
-            num_block = (max(1, self.map_size[0] // 30), max(1, self.map_size[1] // 30))
-            self.map = -warehouse_generator(num_block=num_block)
-            self.map_size = self.map.shape
+            # Generate warehouse map with shelves that fit within the specified size
+            self.map = warehouse_generator(env_size=self.map_size)
         elif configs.map_type == 'maze':
             # Generate maze map
             self.map = -maze_generator(env_size=(self.map_size[0], self.map_size[0]),
@@ -209,10 +207,8 @@ class Environment:
                 # Generate the map using house_generator
                 self.map, _ = house_generator(env_size=self.map_size[0])
             elif configs.map_type == 'warehouse':
-                # Generate warehouse map
-                num_block = (max(1, requested_map_size[0] // 30), max(1, requested_map_size[1] // 30))
-                self.map = -warehouse_generator(num_block=num_block)
-                self.map_size = self.map.shape
+                # Generate warehouse map with shelves that fit within the specified size
+                self.map = warehouse_generator(env_size=requested_map_size)
             elif configs.map_type == 'maze':
                 # Generate maze map
                 self.map = -maze_generator(env_size=(requested_map_size[0], requested_map_size[0]),

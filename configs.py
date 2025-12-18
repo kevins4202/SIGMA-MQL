@@ -63,6 +63,7 @@ init_env_settings = (3, 10)
 max_num_agents = 3
 max_map_length = 20
 pass_rate = 0.9
+
 # dqn network setting
 cnn_channel = 128
 hidden_dim = 256
@@ -74,7 +75,7 @@ max_comm_agents = 10 # including agent itself, means one can at most communicate
 num_comm_layers = 2
 num_comm_heads = 2
 
-
+#testing
 test_seed = 0
 num_test_cases = 200
 

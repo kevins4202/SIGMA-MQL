@@ -13,7 +13,11 @@ def random_generator(SIZE_O=(10, 40), PROB_O=(0, .3)):
     prob = (PROB_O[0], PROB_O[1])
 
     def primal_map(SIZE=size, PROB=prob):
-        prob = np.random.triangular(PROB[0], .33 * PROB[0] + .66 * PROB[1], PROB[1])
+        # Handle fixed density case (PROB[0] == PROB[1]) to avoid triangular distribution error
+        if PROB[0] == PROB[1]:
+            prob = PROB[0]
+        else:
+            prob = np.random.triangular(PROB[0], .33 * PROB[0] + .66 * PROB[1], PROB[1])
         size = np.random.choice([SIZE[0], SIZE[0] * .5 + SIZE[1] * .5, SIZE[1]], p=[.5, .25, .25])
         # prob = self.PROB
         # size = self.SIZE  # fixed world0 size and obstacle density for evaluation
@@ -23,6 +27,9 @@ def random_generator(SIZE_O=(10, 40), PROB_O=(0, .3)):
 
     world = primal_map(SIZE=size, PROB=prob)
     world = np.array(world)
+    # Add obstacle border around the map
+    world[0, :] = world[-1, :] = -1  # Set the first row and the last row as obstacles
+    world[:, 0] = world[:, -1] = -1  # Set the first and last column as obstacles
     return world
 
 
@@ -50,7 +57,7 @@ def maze_generator(env_size=(10, 70), wall_components=(1, 8), obstacle_density=N
     def maze(h, w, total_density=0):
         # Only odd shapes
         assert h > 0 and w > 0, "You are giving non-positive width and height"
-        shape = ((h // 2) * 2 + 3, (w // 2) * 2 + 3)
+        shape = (((h - 3) // 2) * 2 + 3, ((w - 3) // 2) * 2 + 3)
         # Adjust num_components and density relative to maze world_size
         # density    = int(density * ((shape[0] // 2) * (shape[1] // 2))) // 20 # world_size of components
         density = int(shape[0] * shape[1] * total_density // num_components) if num_components != 0 else 0
@@ -120,48 +127,104 @@ def maze_generator(env_size=(10, 70), wall_components=(1, 8), obstacle_density=N
     return world
 
 # Coding by Cheng-Yang @ May 31, 2022
-def warehouse_generator(num_block, num_shelves=(10, 5), ent_location=10, ent_position='right', entrance_size=1):
-    shelf_size = (2 * num_shelves[0] + num_shelves[0] - 1, 5 * num_shelves[1] + num_shelves[1] - 1)
-    block_size = (shelf_size[0] + 4, shelf_size[1] + 4)
-    env_size = (block_size[0] * num_block[0] + 2, block_size[1] * num_block[1] + 2)
+# Refactored to accept env_size and calculate shelf layout automatically
+def warehouse_generator(env_size, ent_location=None, ent_position='right', entrance_size=1):
+    """
+    Generate a warehouse map with 2x5 shelves that fit within the specified dimensions.
+    
+    Args:
+        env_size: Tuple (height, width) specifying the target environment dimensions.
+        ent_location: Location of entrance along the specified wall. Defaults to center.
+        ent_position: Which wall has the entrance ('top', 'bottom', 'left', 'right').
+        entrance_size: Number of cells for the entrance opening.
+    
+    Returns:
+        grid_map: 2D numpy array where -1 is obstacle, 0 is free space.
+    """
+    # Fixed shelf dimensions (2 rows x 5 columns)
+    SHELF_HEIGHT = 2
+    SHELF_WIDTH = 5
+    # Aisle width between shelves
+    AISLE_ROW = 1  # aisle between shelf rows
+    AISLE_COL = 1  # aisle between shelf columns
+    # Minimum margin from border to first shelf
+    MARGIN_ROW = 3  # top/bottom margin before shelves start
+    MARGIN_COL = 3  # left/right margin before shelves start
+    
+    height, width = env_size
+    
+    # Calculate usable space (excluding borders)
+    usable_height = height - 2  # subtract top and bottom borders
+    usable_width = width - 2    # subtract left and right borders
+    
+    # Calculate how many shelves fit
+    # Each shelf unit in rows: SHELF_HEIGHT + AISLE_ROW (except last one doesn't need trailing aisle)
+    # Available for shelves: usable_height - 2*MARGIN_ROW (margins on both sides)
+    available_height = usable_height - MARGIN_ROW  # only need margin at start
+    available_width = usable_width - MARGIN_COL    # only need margin at start
+    
+    # Number of shelves that fit
+    # First shelf takes SHELF_HEIGHT, each additional takes SHELF_HEIGHT + AISLE_ROW
+    if available_height >= SHELF_HEIGHT:
+        num_shelf_rows = 1 + max(0, (available_height - SHELF_HEIGHT) // (SHELF_HEIGHT + AISLE_ROW))
+    else:
+        num_shelf_rows = 0
+    
+    if available_width >= SHELF_WIDTH:
+        num_shelf_cols = 1 + max(0, (available_width - SHELF_WIDTH) // (SHELF_WIDTH + AISLE_COL))
+    else:
+        num_shelf_cols = 0
 
-    def warehouse(length, height):
-        counter_row = 0
-        counter_column = 0
-        world_size = (length, height)
+    def warehouse(h, w, n_rows, n_cols):
         # Build actual warehouse
-        depot = np.zeros(world_size, dtype='int')
-        # create border
-        depot[0, :] = depot[-1, :] = 1  # Set the first row and the last row of Z as 1
-        depot[:, 0] = depot[:, -1] = 1  # Set the first and last column of Z as 1
-        for i in range(1, num_block[0] * num_shelves[0] + 1):
-            for j in range(1, num_block[1] * num_shelves[1] + 1):
-                counter_row = int((i - 1) // num_shelves[0])
-                counter_column = int((j - 1) // num_shelves[1])
-                depot[3 * i + counter_row * 3:3 * i + counter_row * 3 + 2,
-                3 + 6 * (j - 1) + counter_column * 3:3 + 6 * (j - 1) + 5 + counter_column * 3] = 1
-                # depot[3*i:3*i+2, 3+6*(j-1):3+6*(j-1)+5] = 1
+        depot = np.zeros((h, w), dtype='int')
+        # Create border
+        depot[0, :] = depot[-1, :] = 1  # top and bottom borders
+        depot[:, 0] = depot[:, -1] = 1  # left and right borders
+        
+        # Place shelves
+        for i in range(n_rows):
+            for j in range(n_cols):
+                # Calculate shelf position
+                row_start = MARGIN_ROW + i * (SHELF_HEIGHT + AISLE_ROW)
+                row_end = row_start + SHELF_HEIGHT
+                col_start = MARGIN_COL + j * (SHELF_WIDTH + AISLE_COL)
+                col_end = col_start + SHELF_WIDTH
+                
+                # Ensure we don't exceed bounds
+                if row_end <= h - 1 and col_end <= w - 1:
+                    depot[row_start:row_end, col_start:col_end] = 1
+        
         return depot
 
-    grid_map = -warehouse(int(env_size[0]), int(env_size[1])).astype(int)
-    for i in range(0, entrance_size):
+    grid_map = -warehouse(height, width, num_shelf_rows, num_shelf_cols).astype(int)
+    
+    # Set default entrance location to center of the wall
+    if ent_location is None:
+        if ent_position in ["top", "bottom"]:
+            ent_location = width // 2
+        else:
+            ent_location = height // 2
+    
+    # Create entrance
+    for i in range(entrance_size):
         loc = ent_location + i
         if ent_position == "top":
-            if loc >= env_size[1]:
-                loc = env_size[1] - 1
+            if loc >= width:
+                loc = width - 1
             entrance_location = (0, loc)
         elif ent_position == "bottom":
-            if loc >= env_size[1]:
-                loc = env_size[1] - 1
-            entrance_location = (env_size[0] - 1, loc)
+            if loc >= width:
+                loc = width - 1
+            entrance_location = (height - 1, loc)
         elif ent_position == "left":
-            if loc >= env_size[0]:
-                loc = env_size[0] - 1
+            if loc >= height:
+                loc = height - 1
             entrance_location = (loc, 0)
-        else:
-            if loc >= env_size[0]:
-                loc = env_size[0] - 1
-            entrance_location = (loc, env_size[1] - 1)
+        else:  # right
+            if loc >= height:
+                loc = height - 1
+            entrance_location = (loc, width - 1)
 
         grid_map[entrance_location[0], entrance_location[1]] = 0
 
@@ -549,7 +612,7 @@ if __name__ == "__main__":
         # generator = maze_generator()
         # create a warehouse
         # world = random_generator(SIZE_O=(38, 40), PROB_O=(0, .3))
-        # world = warehouse_generator(num_block=(2, 2), num_shelves=(4, 2), ent_location=10, ent_position="top", entrance_size=3)
+        # world = warehouse_generator(env_size=(30, 30), ent_location=10, ent_position="top", entrance_size=3)
         # world = maze_generator(env_size=(39, 40), wall_components=(7, 8), obstacle_density=(0, .3))
         world, nodes = house_generator(env_size=(10, 40))
         world_for_ske = 1 - (-1 * world)

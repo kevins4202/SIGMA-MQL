@@ -350,6 +350,42 @@ def make_animation(
     ani.save(output_file, writer="pillow")
 
 
+def plot_random_maps(map_length: int = 10, density: float = 0.3):
+    """
+    Generate and plot a random map for each of the 4 map types.
+    Uses the Environment class to generate maps (same pattern as create_test).
+    """
+    map_types = ['house', 'maze', 'random', 'warehouse']
+    original_map_type = configs.map_type
+    
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4))
+    
+    # Binary colormap: white=empty (0), gray=obstacle (1)
+    color_map = np.array([[255, 255, 255], [190, 190, 190]])
+    
+    try:
+        for idx, map_type in enumerate(map_types):
+            configs.map_type = map_type
+            # Don't use fix_density for 'random' type - its generator uses triangular
+            # distribution that requires a range, not a fixed value
+            fix_dens = density if map_type != 'random' else None
+            env = Environment(fix_density=fix_dens, num_agents=1, map_length=map_length)
+            
+            # Convert map to uint8 for color indexing (0=empty, 1=obstacle)
+            # Some generators use -1 for obstacles, others use 1
+            map_img = (env.map != 0).astype(np.uint8)
+            
+            axes[idx].imshow(color_map[map_img])
+            axes[idx].set_title(f'{map_type.capitalize()} ({map_length}x{map_length})')
+            axes[idx].axis('off')
+    finally:
+        configs.map_type = original_map_type
+    
+    plt.tight_layout()
+    plt.savefig(f'random_maps_{map_length}x{map_length}_{density}density.png')
+    plt.show()
+
+
 if __name__ == "__main__":
 
     # create test sets for all map types
@@ -362,11 +398,14 @@ if __name__ == "__main__":
     #     )
 
     # test model across specified map types and models
-    test_model(
-        [
-            ("house", 27000),
-        ]
-    )
+    # test_model(
+    #     [
+    #         ("house", 27000),
+    #     ]
+    # )
 
     # visualize result (example for one map type)
     # make_animation('house', 10000, (30, 24, 0.3), 100)
+
+    # plot random 10x10 maps for each map type
+    plot_random_maps(map_length=25, density=0.3)
