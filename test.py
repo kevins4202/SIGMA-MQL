@@ -364,16 +364,7 @@ if __name__ == "__main__":
     # test model across specified map types and models
     test_model(
         [
-            ("house", 1000),
-            ("house", 2000),
-            ("house", 3000),
-            ("house", 4000),
-            ("house", 5000),
-            ("house", 6000),
-            ("house", 7000),
-            ("house", 8000),
-            ("house", 9000),
-            ("house", 10000),
+            ("house", 27000),
         ]
     )
 

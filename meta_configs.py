@@ -17,33 +17,17 @@ context_hidden_size = 128  # Hidden size for context GRU (half of SIGMA's hidden
 history_length = 16  # Length of trajectory history for context encoding (matches SIGMA's seq_len)
 
 # Covariate Shift Correction Settings
-# lam_csc: regularization parameter for logistic regression (C = lam_csc)
-# Smaller values mean stronger regularization
-# Values from meta-q-learning: 0.05-0.5 depending on environment
 lam_csc = 0.1  # Default, can be tuned per environment
 
-# beta_clip: clip importance weights to prevent extreme values
-# Values from meta-q-learning: 1.0-2.0 depending on environment
 beta_clip = 1.2  # Default
 
-# use_normalized_beta: whether to normalize beta scores using logistic regression probabilities
 use_normalized_beta = True
 
-# max_iter_logistic: maximum iterations for logistic regression training
 max_iter_logistic = 2000
 
-# use_ess_clipping: whether to use effective sample size for clipping
 use_ess_clipping = False
 
-# enable_beta_obs_cxt: whether to concatenate observation with context for discriminator
-# If True: discriminator uses [obs, context]
-# If False: discriminator uses only context
 enable_beta_obs_cxt = False
-
-# Task Sampling Settings
-num_tasks_sample = 5  # Number of tasks to sample per training iteration
-num_train_tasks = 40  # Total number of training tasks
-num_eval_tasks = 10   # Number of evaluation tasks
 
 # Meta-Learning Training Settings
 num_train_steps = 500  # Number of gradient steps per task during meta-training
@@ -55,9 +39,6 @@ sample_mult = 5  # Multiplier for batch size during adaptation
 enable_adaptation = True  # Whether to enable test-time adaptation
 num_initial_steps = 1500  # Number of initial steps to collect data before adaptation
 
-# Proximal Point Optimization
-# prox_coef: coefficient for proximal term in loss function
-# Prevents adapted model from deviating too much from meta-learned initialization
 prox_coef = 0.1
 
 # reset_optims: whether to reset optimizers at the start of adaptation
@@ -70,6 +51,10 @@ min_buffer_size = 100000  # Minimum buffer size before using num_train_steps
 # Evaluation Settings
 unbounded_eval_hist = False  # If True, use max_path_length as history length during eval
 use_epi_len_steps = True     # Adjust number of train steps based on episode length
+
+# Model Loading
+load_model = False  # Whether to load a pretrained model
+load_path = './models/house/meta_model_final.pth'  # Path to pretrained meta model
 
 # Meta-Batch Settings
 meta_batch_size = 10  # Number of tasks per meta-update
