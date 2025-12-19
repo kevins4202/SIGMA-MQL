@@ -3,8 +3,6 @@ import random
 
 import numpy as np
 import torch
-import torch.nn as nn
-from torch.optim import Adam
 
 from meta_model import MetaNetwork
 from environment import Environment
@@ -93,9 +91,6 @@ def train_on_single_task(meta_network, task_config, task_traj_store, num_episode
     original_map_type = configs.map_type
     configs.map_type = map_type
 
-    # Optimizer for the underlying SIGMA network
-    optimizer = Adam(meta_network.network.parameters(), lr=1e-4)
-
     # Training metrics
     all_rewards = []
     all_successes = []
@@ -120,11 +115,6 @@ def train_on_single_task(meta_network, task_config, task_traj_store, num_episode
         # Store trajectory for meta components (context encoder + CSC)
         traj = build_trajectory_for_csc(meta_network, episode, device)
         task_traj_store.setdefault(map_type, []).append(traj)
-
-        loss = -torch.tensor(total_reward, dtype=torch.float32, device=device)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
         # Train CSC occasionally when we have trajectories from at least two tasks
         if len(task_traj_store) > 1 and (episode_idx + 1) % 10 == 0:
@@ -178,6 +168,12 @@ def main():
         project="SIGMA-MQL",
         group="meta_simple",
         name=f"meta_simple_{os.getpid()}",
+        config={
+            "pretrain_network_path": meta_configs.pretrain_network_path,
+            "context_hidden_size": meta_configs.context_hidden_size,
+            "lam_csc": meta_configs.lam_csc,
+            "beta_clip": meta_configs.beta_clip,
+        }
     )
 
     # Setup device
@@ -196,6 +192,13 @@ def main():
         beta_clip=meta_configs.beta_clip,
         device=device
     ).to(device)
+
+    # Load pretrained network weights if specified
+    if meta_configs.pretrain_network_path is not None:
+        print(f"Loading pretrained network weights from: {meta_configs.pretrain_network_path}")
+        pretrain_state_dict = torch.load(meta_configs.pretrain_network_path, map_location=device)
+        meta_network.network.load_state_dict(pretrain_state_dict)
+        print("Pretrained weights loaded successfully!")
 
     training_tasks = [
         ('random', 15, 3, 0.2),     # Random obstacles
@@ -217,7 +220,7 @@ def main():
             meta_network,
             task_config,
             task_traj_store,
-            num_episodes=50,
+            num_episodes=10000,
             device=device,
         )
 

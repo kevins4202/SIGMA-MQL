@@ -30,7 +30,7 @@ use_ess_clipping = False
 enable_beta_obs_cxt = False
 
 # Meta-Learning Training Settings
-num_train_steps = 500  # Number of gradient steps per task during meta-training
+num_train_steps = 10000  # Number of gradient steps per task during meta-training
 snap_iter_nums = 5     # Number of adaptation steps during evaluation (test-time adaptation)
 main_snap_iter_nums = 400  # Number of adaptation steps on training tasks with CSC
 sample_mult = 5  # Multiplier for batch size during adaptation
@@ -55,6 +55,11 @@ use_epi_len_steps = True     # Adjust number of train steps based on episode len
 # Model Loading
 load_model = False  # Whether to load a pretrained model
 load_path = './models/house/meta_model_final.pth'  # Path to pretrained meta model
+
+# Pretrained Network Initialization
+# Set to a path to initialize the vanilla DQN with pretrained weights before meta-learning
+# Set to None to start from random initialization
+pretrain_network_path = './models/house/27000.pth'  # e.g., './models/warehouse/25000.pth'
 
 # Meta-Batch Settings
 meta_batch_size = 10  # Number of tasks per meta-update

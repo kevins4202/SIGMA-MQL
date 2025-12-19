@@ -207,7 +207,7 @@ class Network(nn.Module):
         combined_input = torch.cat((self.hidden, mlp_output), dim=1)
 
         # 计算损失项
-        sheaf_section_loss = torch.zeros(num_agents, dtype=torch.float32)
+        sheaf_section_loss = torch.zeros(num_agents, dtype=torch.float32, device=obs.device)
 
         for i in range(num_agents):
             # 获取第 i 个智能体的邻域智能体索引
@@ -246,7 +246,7 @@ class Network(nn.Module):
 
         actions = torch.argmax(q_val, 1).tolist()
 
-        return actions, q_val.numpy(), self.hidden.numpy(), comm_mask.numpy()
+        return actions, q_val.cpu().numpy(), self.hidden.cpu().numpy(), comm_mask.cpu().numpy()
 
     @torch.no_grad()
     def step_test(self, obs, pos):
@@ -285,7 +285,7 @@ class Network(nn.Module):
         combined_input = torch.cat((self.hidden, mlp_output), dim=1)
 
         # 计算损失项
-        sheaf_section_loss = torch.zeros(num_agents, dtype=torch.float32)
+        sheaf_section_loss = torch.zeros(num_agents, dtype=torch.float32, device=obs.device)
 
         for i in range(num_agents):
             # 获取第 i 个智能体的邻域智能体索引
@@ -324,7 +324,7 @@ class Network(nn.Module):
 
         actions = torch.argmax(q_val, 1).tolist()
 
-        return actions, q_val.numpy(), self.hidden.numpy(), comm_mask.numpy(), sheaf_section_loss.mean().numpy()
+        return actions, q_val.cpu().numpy(), self.hidden.cpu().numpy(), comm_mask.cpu().numpy(), sheaf_section_loss.mean().cpu().numpy()
 
     def reset(self):
         self.hidden = None
@@ -380,7 +380,7 @@ class Network(nn.Module):
         combined_input = torch.cat((hidden, mlp_output_q), dim=1)
 
         # 计算损失项
-        sheaf_section_loss = torch.zeros(configs.batch_size, num_agents, dtype=torch.float32)
+        sheaf_section_loss = torch.zeros(configs.batch_size, num_agents, dtype=torch.float32, device=obs.device)
 
         mlp_q = mlp_output.view(max_steps, configs.batch_size, num_agents, self.mlp_dim)[steps - 1, torch.arange(configs.batch_size)] # torch.Size([192, 5, 2])
         # comm_mask shape:torch.Size([192, 18, 5, 5])
@@ -415,7 +415,7 @@ class Network(nn.Module):
         state_val = self.state(hidden)
 
         sheaf_section_loss = sheaf_section_loss[:, 0]
-        sheaf_section_loss = sheaf_section_loss.unsqueeze(1).to(torch.device("cuda"))
+        sheaf_section_loss = sheaf_section_loss.unsqueeze(1)
         # wandb.log({"sheaf_section_loss": sheaf_section_loss})
         if configs.Sec_cons:
             q_val = state_val - self.lambdas * sheaf_section_loss + adv_val - adv_val.mean(1, keepdim=True)
