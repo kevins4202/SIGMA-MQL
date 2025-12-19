@@ -197,7 +197,8 @@ class Environment:
                                        obstacle_density=[self.obstacle_density, self.obstacle_density])
             self.map_size = self.map.shape
         else:  # 'random' or any other type defaults to random
-            self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
+            self.map = -random_generator(SIZE_O=(self.map_size[0], self.map_size[1]), 
+                                         PROB_O=(self.obstacle_density, self.obstacle_density))
 
         partition_list = map_partition(self.map)
         partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
@@ -215,7 +216,8 @@ class Environment:
                                            obstacle_density=[self.obstacle_density, self.obstacle_density])
                 self.map_size = self.map.shape
             else:  # 'random' or any other type defaults to random
-                self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int_)
+                self.map = -random_generator(SIZE_O=(self.map_size[0], self.map_size[1]), 
+                                             PROB_O=(self.obstacle_density, self.obstacle_density))
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
 
@@ -268,6 +270,55 @@ class Environment:
 
         self.get_heuri_map()
 
+        self.last_actions = np.zeros((self.num_agents, 5, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool_)
+
+    def load_map_only(self, map_array: np.ndarray, num_agents: int):
+        """
+        Load a pre-generated map and place new agents/goals on it.
+        Used for fair testing where the same maps are used across different agent counts.
+        """
+        self.map = np.copy(map_array)
+        self.num_agents = num_agents
+        self.map_size = (self.map.shape[0], self.map.shape[1])
+        
+        # Use partition logic to find valid placement areas
+        partition_list = map_partition(self.map)
+        partition_list = [p for p in partition_list if len(p) >= 2]
+        
+        # Regenerate if no valid partitions (shouldn't happen with valid maps)
+        if len(partition_list) == 0:
+            raise ValueError("Map has no valid partitions for agent placement")
+        
+        self.agents_pos = np.empty((self.num_agents, 2), dtype=np.int_)
+        self.goals_pos = np.empty((self.num_agents, 2), dtype=np.int_)
+        
+        pos_num = sum([len(partition) for partition in partition_list])
+        
+        # Place agents and goals using same logic as __init__
+        for i in range(self.num_agents):
+            pos_idx = random.randint(0, pos_num - 1)
+            partition_idx = 0
+            for partition in partition_list:
+                if pos_idx >= len(partition):
+                    pos_idx -= len(partition)
+                    partition_idx += 1
+                else:
+                    break
+            
+            pos = random.choice(partition_list[partition_idx])
+            partition_list[partition_idx].remove(pos)
+            self.agents_pos[i] = np.asarray(pos, dtype=np.int_)
+            
+            pos = random.choice(partition_list[partition_idx])
+            partition_list[partition_idx].remove(pos)
+            self.goals_pos[i] = np.asarray(pos, dtype=np.int_)
+            
+            partition_list = [p for p in partition_list if len(p) >= 2]
+            pos_num = sum([len(partition) for partition in partition_list])
+        
+        self.steps = 0
+        self.imgs = []
+        self.get_heuri_map()
         self.last_actions = np.zeros((self.num_agents, 5, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool_)
 
     def get_heuri_map(self):

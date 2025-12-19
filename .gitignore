@@ -25,6 +25,13 @@ Thumbs.db
 # Logs
 *.log
 
+#Large File Project outputs
+test_set/
+test_csv/
+videos/
+models/
+
+
 # Temporary files
 *.tmp
 *.bak
