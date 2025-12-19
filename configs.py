@@ -24,7 +24,7 @@ action_dim = 5
 ############################################################
 
 # basic training setting
-map_type = 'house'
+map_type = 'maze'
 num_actors = 20
 log_interval = 10
 training_times = 50000
@@ -32,11 +32,11 @@ save_interval=1000
 gamma=0.99
 batch_size=192
 learning_starts=25000
-target_network_update_freq=1000
+target_network_update_freq=2000
 save_path=f'./models/{map_type}'
-max_episode_length = 256
+max_episode_length = 512
 seq_len = 16
-load_model = False
+load_model = True
 load_path = './models/save_model/model_house/84000_house.pth'
 
 Advantage_all = True
@@ -59,7 +59,7 @@ prioritized_replay_alpha=0.6
 prioritized_replay_beta=0.4
 
 # curriculum learning
-init_env_settings = (3, 10)
+init_env_settings = (3, 20)
 max_num_agents = 3
 max_map_length = 20
 pass_rate = 0.9

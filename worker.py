@@ -291,7 +291,18 @@ class GlobalBuffer:
                             self.episode_length_dict[add_map_key] = []
                             self.reward_dict[add_map_key] = []
             
-            self.env_settings_set = ray.put(list(self.stat_dict.keys()))
+            # Update env_settings_set with all settings in stat_dict
+            # This ensures all available settings (including newly added ones) can be tested
+            all_settings = list(self.stat_dict.keys())
+            # Always ensure the initial setting (3, 10) is included and prioritized
+            # This prevents it from being skipped - if it shows 0/0 in the display, it means
+            # no episodes were run with it, which shouldn't happen if it's always available
+            if configs.init_env_settings in self.stat_dict:
+                # Remove it from current position and put it first to ensure it gets tested
+                if configs.init_env_settings in all_settings:
+                    all_settings.remove(configs.init_env_settings)
+                all_settings.insert(0, configs.init_env_settings)  # Put it first for priority
+            self.env_settings_set = ray.put(all_settings)
             
             # Calculate aggregated metrics for wandb logging
             # Success rate: percentage of episodes where all agents reached goals
