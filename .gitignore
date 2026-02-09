@@ -25,7 +25,7 @@ Thumbs.db
 # Logs
 *.log
 
-#Large File Project outputs
+#Large file project outputs
 test_set/
 test_csv/
 videos/

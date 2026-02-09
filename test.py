@@ -799,49 +799,49 @@ if __name__ == "__main__":
     #     csv_filename='test_results_custom.csv'
     # )
 
+    test_model_custom(
+        model_map_type='house',
+        model_number=84000,
+        test_map_type='house',
+        test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3)],
+        use_fair=True,
+        csv_filename='house_cross_house_test.csv',
+        make_animations=True,     
+        animation_steps=100
+    )
+
     # test_model_custom(
     #     model_map_type='house',
     #     model_number=84000,
-    #     test_map_type='house',
+    #     test_map_type='random',
     #     test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3)],
     #     use_fair=True,
-    #     csv_filename='house_cross_house_test.csv',
+    #     csv_filename='house_cross_random_test.csv',
     #     make_animations=True,     
     #     animation_steps=100
     # )
 
-    test_model_custom(
-        model_map_type='house',
-        model_number=84000,
-        test_map_type='random',
-        test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3)],
-        use_fair=True,
-        csv_filename='house_cross_random_test.csv',
-        make_animations=True,     
-        animation_steps=100
-    )
+    # test_model_custom(
+    #     model_map_type='house',
+    #     model_number=84000,
+    #     test_map_type='maze',
+    #     test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3)],
+    #     use_fair=True,
+    #     csv_filename='house_cross_maze_test.csv',
+    #     make_animations=True,     
+    #     animation_steps=100
+    # )
 
-    test_model_custom(
-        model_map_type='house',
-        model_number=84000,
-        test_map_type='maze',
-        test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3)],
-        use_fair=True,
-        csv_filename='house_cross_maze_test.csv',
-        make_animations=True,     
-        animation_steps=100
-    )
-
-    test_model_custom(
-        model_map_type='house',
-        model_number=84000,
-        test_map_type='warehouse',
-        test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3), (30, 24, 0.3), (45, 3, 0.4), (45, 12, 0.4), (45, 24, 0.4), (45, 48, 0.4)],
-        use_fair=True,
-        csv_filename='house_cross_warehouse_test.csv',
-        make_animations=True,     
-        animation_steps=100
-    )
+    # test_model_custom(
+    #     model_map_type='house',
+    #     model_number=84000,
+    #     test_map_type='warehouse',
+    #     test_cases=[(15, 3, 0.2), (15, 4, 0.2), (15, 5, 0.2), (30, 3, 0.3), (30, 6, 0.3), (30, 12, 0.3), (30, 24, 0.3), (45, 3, 0.4), (45, 12, 0.4), (45, 24, 0.4), (45, 48, 0.4)],
+    #     use_fair=True,
+    #     csv_filename='house_cross_warehouse_test.csv',
+    #     make_animations=True,     
+    #     animation_steps=100
+    # )
 
 
 
